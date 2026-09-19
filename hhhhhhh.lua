@@ -123,6 +123,7 @@ end
 TS=TweenService
 LP=Players.LocalPlayer
 local NS,CS=59,29
+local LAGGER_SPEED=30
 local LAGGER_CARRY_SPEED=15
 local antiDropEnabled = false
 local antiDropActive = false
@@ -255,7 +256,7 @@ openMmaLaggerPanel = function()
     title.Size = UDim2.new(1, -50, 0, 28)
     title.Position = UDim2.new(0, 14, 0, 12)
     title.BackgroundTransparency = 1
-    title.Text = "MMA steal OMGGGGGGGGG what fackkkk"
+    title.Text = "منو انت"
     title.Font = Enum.Font.GothamBlack
     title.TextSize = 13
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -794,25 +795,88 @@ function syncAutoAntiDrop()
     startAntiDrop()
 end
 
+
+-- ============================================================
+-- HARD HIT (from Vynx) — visual hit radius ring around you
+-- Shows the range where your bat/hits are most effective
+-- ============================================================
+local hardHitEnabled = false
+local hardHitRadius = 10
+local _hardHitRing = nil
+local _hardHitConn = nil
+
+local function hideHardHitRing()
+    if _hardHitRing then pcall(function() _hardHitRing:Destroy() end); _hardHitRing = nil end
+end
+
+local function showHardHitRing()
+    local char = LP.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    hideHardHitRing()
+    local cyl = Instance.new("CylinderHandleAdornment")
+    cyl.Name = "MenoHardHitRing"
+    cyl.Adornee = hrp
+    cyl.AlwaysOnTop = true
+    cyl.ZIndex = 5
+    cyl.Height = 0.15
+    cyl.Radius = hardHitRadius
+    cyl.InnerRadius = math.max(0.1, hardHitRadius - 0.35)
+    cyl.Color3 = Color3.fromRGB(220, 40, 50)
+    cyl.Transparency = 0.45
+    cyl.CFrame = CFrame.new(0, -2.8, 0) * CFrame.Angles(0, 0, math.rad(90))
+    cyl.Parent = hrp
+    _hardHitRing = cyl
+end
+
+local function startHardHit()
+    hardHitEnabled = true
+    if _hardHitConn then return end
+    _hardHitConn = RunService.Heartbeat:Connect(function()
+        if not hardHitEnabled then return end
+        local char = LP.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        if not _hardHitRing or not _hardHitRing.Parent then showHardHitRing() end
+        if _hardHitRing then
+            local r = tonumber(hardHitRadius) or 10
+            _hardHitRing.Radius = r
+            _hardHitRing.InnerRadius = math.max(0.1, r - 0.35)
+            if _hardHitRing.Adornee ~= root then
+                _hardHitRing.Adornee = root
+                _hardHitRing.Parent = root
+            end
+        end
+    end)
+    showHardHitRing()
+end
+
+local function stopHardHit()
+    hardHitEnabled = false
+    if _hardHitConn then pcall(function() _hardHitConn:Disconnect() end); _hardHitConn = nil end
+    hideHardHitRing()
+end
+
 function getActiveMoveSpeed()
+    -- Vynx-style selection (manual move only — L/R use getAutoPathSpeed)
     local spd
     if laggerModeEnabled then
-        spd = LAGGER_CARRY_SPEED
+        spd = (carrySpeedActive and LAGGER_CARRY_SPEED) or (LAGGER_SPEED or 30)
     elseif carrySpeedActive then
         spd = CS
     else
         spd = NS
     end
-    if safeSpeedNearBaseEnabled and carrySpeedActive and isNearEnemyPlot(NEAR_ENEMY_BASE_RANGE) then
-        if spd > SAFE_NEAR_BASE_SPEED then
-            spd = SAFE_NEAR_BASE_SPEED
+    if safeSpeedNearBaseEnabled and carrySpeedActive and isNearEnemyPlot and isNearEnemyPlot(NEAR_ENEMY_BASE_RANGE) then
+        if spd > (SAFE_NEAR_BASE_SPEED or 28) then
+            spd = SAFE_NEAR_BASE_SPEED or 28
         end
     end
     return spd
 end
 function getAutoPathSpeed()
-    if laggerModeEnabled then return LAGGER_CARRY_SPEED
-    else return NS end
+    -- Auto Left/Right always Normal Speed (ignore carry / lagger)
+    return NS
 end
 local _autoSwitchWasSteal=false
 function updateAutoSwitchSpeed()
@@ -1300,7 +1364,7 @@ local function createAutoStealProgressBar()
     title.Size = UDim2.new(1, -110, 0, 20)
     title.Position = UDim2.new(0, 10, 0, 4)
     title.BackgroundTransparency = 1
-    title.Text = "MMA steal OMGGGGGGGGG what fackkkk"
+    title.Text = "منو انت"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.Font = Enum.Font.GothamBlack
     title.TextSize = 11
@@ -1986,6 +2050,14 @@ startBatAimbot=function()
     if autoRightEnabled then autoRightEnabled=false;if autoRightSetVisual then autoRightSetVisual(false) end;stopAutoRight() end
     local hum0=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
     if hum0 then hum0.AutoRotate=false end
+    -- Fast auto TP Down when bat aimbot starts
+    task.spawn(function()
+        for _=1,6 do
+            if not autoBatEnabled then break end
+            pcall(function() if runTPFloor then runTPFloor() elseif doAutoTPDown then doAutoTPDown(true) end end)
+            task.wait(0.05)
+        end
+    end)
     aimbotConn=RunService.RenderStepped:Connect(function()
         if not autoBatEnabled then return end
         local c=LP.Character;if not c then return end
@@ -2896,13 +2968,13 @@ refreshSpeedModeLabel=function()
     end
     if laggerModePillRef and laggerModePillRef.pill and laggerModePillRef.dot then
         local pill=laggerModePillRef.pill;local dot=laggerModePillRef.dot;local on=laggerModeEnabled
-        local WHITE=Color3.fromRGB(255,255,255);local OFF=Color3.fromRGB(46,24,38);local GRAY=Color3.fromRGB(180,150,165)
+        local WHITE=Color3.fromRGB(200,30,40);local OFF=Color3.fromRGB(0,0,0);local GRAY=Color3.fromRGB(80,80,85)
         TweenService:Create(pill,TweenInfo.new(0.16,Enum.EasingStyle.Quad),{BackgroundColor3=on and WHITE or OFF}):Play()
         TweenService:Create(dot,TweenInfo.new(0.16,Enum.EasingStyle.Back),{Position=on and UDim2.new(1,-13,0.5,-5) or UDim2.new(0,3,0.5,-5),BackgroundColor3=on and Color3.fromRGB(30,30,30) or GRAY}):Play()
     end
     if carryModePillRef and carryModePillRef.pill and carryModePillRef.dot then
         local pill=carryModePillRef.pill;local dot=carryModePillRef.dot;local on=carrySpeedActive
-        local WHITE=Color3.fromRGB(255,255,255);local OFF=Color3.fromRGB(46,24,38);local GRAY=Color3.fromRGB(180,150,165)
+        local WHITE=Color3.fromRGB(200,30,40);local OFF=Color3.fromRGB(0,0,0);local GRAY=Color3.fromRGB(80,80,85)
         TweenService:Create(pill,TweenInfo.new(0.16,Enum.EasingStyle.Quad),{BackgroundColor3=on and WHITE or OFF}):Play()
         TweenService:Create(dot,TweenInfo.new(0.16,Enum.EasingStyle.Back),{Position=on and UDim2.new(1,-13,0.5,-5) or UDim2.new(0,3,0.5,-5),BackgroundColor3=on and Color3.fromRGB(30,30,30) or GRAY}):Play()
     end
@@ -3111,12 +3183,12 @@ buildMobileButtons = function()
     local QS = 62
     local QG = 8
     local QR = 12
-    local Q_OFF        = Color3.fromRGB(245, 245, 250)
-    local Q_ON         = Color3.fromRGB(12, 12, 16)
-    local Q_BORDER     = Color3.fromRGB(200, 200, 210)
-    local Q_BORDER_ON  = Color3.fromRGB(40, 40, 48)
-    local Q_TEXT       = Color3.fromRGB(20, 20, 28)
-    local Q_TEXT_ON    = Color3.fromRGB(245, 245, 250)
+    local Q_OFF        = Color3.fromRGB(0, 0, 0)
+    local Q_ON         = Color3.fromRGB(200, 30, 40)
+    local Q_BORDER     = Color3.fromRGB(40, 40, 40)
+    local Q_BORDER_ON  = Color3.fromRGB(255, 60, 70)
+    local Q_TEXT       = Color3.fromRGB(255, 255, 255)
+    local Q_TEXT_ON    = Color3.fromRGB(255, 255, 255)
 
     -- Grid container (3 cols x 3 rows)
     local QW = QS * 3 + QG * 2
@@ -3512,16 +3584,16 @@ end
 local C={
     bg=Color3.fromRGB(0, 0, 0),
     bgDark=Color3.fromRGB(0, 0, 0),
-    row=Color3.fromRGB(12, 12, 14),
-    input=Color3.fromRGB(18, 18, 22),
+    row=Color3.fromRGB(6, 6, 6),
+    input=Color3.fromRGB(10, 10, 10),
     blue=Color3.fromRGB(255, 255, 255),
-    blueDim=Color3.fromRGB(180, 180, 190),
-    blueDark=Color3.fromRGB(28, 28, 32),
+    blueDim=Color3.fromRGB(170, 170, 175),
+    blueDark=Color3.fromRGB(14, 14, 14),
     text=Color3.fromRGB(255, 255, 255),
-    textDim=Color3.fromRGB(180, 180, 190),
-    textMuted=Color3.fromRGB(120, 120, 130),
+    textDim=Color3.fromRGB(170, 170, 175),
+    textMuted=Color3.fromRGB(110, 110, 115),
     white=Color3.fromRGB(255, 255, 255),
-    divider=Color3.fromRGB(40, 40, 48),
+    divider=Color3.fromRGB(28, 28, 28),
     green=Color3.fromRGB(200, 255, 220),
 }
 local function guiCorner(p,r) local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,r or 10);c.Parent=p;return c end
@@ -3576,7 +3648,7 @@ _GuiKeys = Keys
 -- BUILD HUB GUI
 ;(function()
     local GuiHub=Instance.new("ScreenGui")
-    GuiHub.Name="MMAHub"; GuiHub.ResetOnSpawn=false
+    GuiHub.Name="MenoEnta"; GuiHub.ResetOnSpawn=false
     GuiHub.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
     GuiHub.DisplayOrder=1
     GuiHub.IgnoreGuiInset=false
@@ -3592,7 +3664,7 @@ _GuiKeys = Keys
 
     local Inner=Instance.new("Frame")
     Inner.Name="Inner"; Inner.ClipsDescendants=false; Inner.Size=UDim2.new(1,0,1,0)
-    Inner.BackgroundColor3=C.bg; Inner.BackgroundTransparency=0; Inner.BorderSizePixel=0; Inner.Parent=Outer
+    Inner.BackgroundColor3=Color3.fromRGB(0,0,0); Inner.BackgroundTransparency=0; Inner.BorderSizePixel=0; Inner.Parent=Outer
     guiCorner(Inner,24); guiStroke(Inner,Color3.fromRGB(40,40,48),1.2); GuiRefs.inner=Inner
 
     local BgCont=Instance.new("Frame")
@@ -3616,7 +3688,7 @@ _GuiKeys = Keys
     Wm.Name="MMA_Watermark"
     Wm.Size=UDim2.new(1,0,1,0)
     Wm.BackgroundTransparency=1
-    Wm.Text="MMA STEAL OMG"
+    Wm.Text="MMA"
     Wm.TextColor3=Color3.fromRGB(255,255,255)
     Wm.TextTransparency=0.88
     Wm.Font=Enum.Font.GothamBlack
@@ -3648,12 +3720,12 @@ _GuiKeys = Keys
 
     local TL=Instance.new("TextLabel")
     TL.Position=UDim2.new(0,14,0,8); TL.Size=UDim2.new(1,-90,0,22); TL.BackgroundTransparency=1
-    TL.Text="MMA STEAL OMG"; TL.TextColor3=C.text; TL.TextSize=14; TL.Font=Enum.Font.GothamBlack
+    TL.Text="منو انت"; TL.TextColor3=Color3.fromRGB(220,35,45); TL.TextSize=14; TL.Font=Enum.Font.GothamBlack
     TL.TextXAlignment=Enum.TextXAlignment.Left; TL.Parent=HF; TL.ZIndex=3
 
     local ML=Instance.new("TextLabel")
     ML.Position=UDim2.new(0,14,0,32); ML.Size=UDim2.new(0,200,0,14); ML.BackgroundTransparency=1
-    ML.Text="MMA STEAL OMG  •  MOBILE"; ML.TextColor3=C.textDim; ML.TextSize=10; ML.Font=Enum.Font.GothamBold
+    ML.Text="منو انت  •  موبايل"; ML.TextColor3=C.textDim; ML.TextSize=10; ML.Font=Enum.Font.GothamBold
     ML.TextXAlignment=Enum.TextXAlignment.Left; ML.Parent=HF; ML.ZIndex=3
 
     -- MINIMIZE BUTTON
@@ -3669,8 +3741,8 @@ _GuiKeys = Keys
     -- MINI RESTORE BUTTON
     local MiniBtn=Instance.new("TextButton")
     MiniBtn.Size=UDim2.new(0,110,0,28); MiniBtn.Position=Outer.Position
-    MiniBtn.BackgroundColor3=C.bgDark; MiniBtn.BorderSizePixel=0
-    MiniBtn.Text="MMA STEAL OMG"; MiniBtn.TextColor3=C.text; MiniBtn.Font=Enum.Font.GothamBlack; MiniBtn.TextSize=11
+    MiniBtn.BackgroundColor3=Color3.fromRGB(0,0,0); MiniBtn.BorderSizePixel=0
+    MiniBtn.Text="منو انت"; MiniBtn.TextColor3=Color3.fromRGB(220,35,45); MiniBtn.Font=Enum.Font.GothamBlack; MiniBtn.TextSize=11
     MiniBtn.ZIndex=20; MiniBtn.Visible=false; MiniBtn.Parent=GuiRefs.hub
     guiCorner(MiniBtn,8); guiStroke(MiniBtn,Color3.fromRGB(45,45,45),1.2)
     makeDraggable_cyber(MiniBtn, MiniBtn)
@@ -3690,23 +3762,53 @@ _GuiKeys = Keys
     HSep.Position=UDim2.new(0,14,0,62); HSep.Size=UDim2.new(1,-28,0,1); HSep.BackgroundColor3=C.blue
     HSep.BackgroundTransparency=0.7; HSep.BorderSizePixel=0; HSep.Parent=Inner; HSep.ZIndex=2
 
+    -- Bottom tab bar
     LeftPanel=Instance.new("Frame")
-    LeftPanel.Name="LeftPanel"; LeftPanel.Size=UDim2.new(0,85,1,-118); LeftPanel.Position=UDim2.new(1,-85,0,63)
-    LeftPanel.BackgroundColor3=C.bgDark; LeftPanel.BackgroundTransparency=0.5; LeftPanel.BorderSizePixel=0
-    LeftPanel.Parent=Inner; guiCorner(LeftPanel,12); LeftPanel.ZIndex=2
+    LeftPanel.Name="LeftPanel"
+    LeftPanel.Size=UDim2.new(1,-16,0,52)
+    LeftPanel.Position=UDim2.new(0,8,1,-60)
+    LeftPanel.BackgroundColor3=Color3.fromRGB(0,0,0)
+    LeftPanel.BackgroundTransparency=0
+    LeftPanel.BorderSizePixel=0
+    LeftPanel.Parent=Inner
+    guiCorner(LeftPanel,10)
+    LeftPanel.ZIndex=2
+    local lpStroke=Instance.new("UIStroke")
+    lpStroke.Color=Color3.fromRGB(40,40,40)
+    lpStroke.Thickness=1
+    lpStroke.Parent=LeftPanel
 
     local CatList=Instance.new("ScrollingFrame")
-    CatList.Name="CategoryList"; CatList.Size=UDim2.new(1,0,1,0); CatList.BackgroundTransparency=1
-    CatList.BorderSizePixel=0; CatList.ScrollBarThickness=2; CatList.ScrollBarImageColor3=C.blue
-    CatList.CanvasSize=UDim2.new(0,0,0,0); CatList.AutomaticCanvasSize=Enum.AutomaticSize.Y; CatList.Active=true; CatList.Parent=LeftPanel
-    local CatLay=Instance.new("UIListLayout"); CatLay.SortOrder=Enum.SortOrder.LayoutOrder; CatLay.Padding=UDim.new(0,4); CatLay.Parent=CatList
-    CatLay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() CatList.CanvasSize = UDim2.new(0, 0, 0, CatLay.AbsoluteContentSize.Y + 25) end)
-    local CatPad=Instance.new("UIPadding"); CatPad.PaddingLeft=UDim.new(0,6); CatPad.PaddingRight=UDim.new(0,6)
-    CatPad.PaddingTop=UDim.new(0,10); CatPad.PaddingBottom=UDim.new(0,10); CatPad.Parent=CatList
+    CatList.Name="CategoryList"
+    CatList.Size=UDim2.new(1,0,1,0)
+    CatList.BackgroundTransparency=1
+    CatList.BorderSizePixel=0
+    CatList.ScrollBarThickness=0
+    CatList.ScrollingDirection=Enum.ScrollingDirection.X
+    CatList.CanvasSize=UDim2.new(0,0,0,0)
+    CatList.AutomaticCanvasSize=Enum.AutomaticSize.X
+    CatList.Active=true
+    CatList.Parent=LeftPanel
+    local CatLay=Instance.new("UIListLayout")
+    CatLay.FillDirection=Enum.FillDirection.Horizontal
+    CatLay.SortOrder=Enum.SortOrder.LayoutOrder
+    CatLay.Padding=UDim.new(0,4)
+    CatLay.VerticalAlignment=Enum.VerticalAlignment.Center
+    CatLay.HorizontalAlignment=Enum.HorizontalAlignment.Center
+    CatLay.Parent=CatList
+    CatLay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        CatList.CanvasSize = UDim2.new(0, CatLay.AbsoluteContentSize.X + 16, 0, 0)
+    end)
+    local CatPad=Instance.new("UIPadding")
+    CatPad.PaddingLeft=UDim.new(0,6)
+    CatPad.PaddingRight=UDim.new(0,6)
+    CatPad.PaddingTop=UDim.new(0,6)
+    CatPad.PaddingBottom=UDim.new(0,6)
+    CatPad.Parent=CatList
     GuiRefs.categoryList=CatList
 
     local CF=Instance.new("ScrollingFrame")
-    CF.Name="ContentFrame"; CF.Size=UDim2.new(1,-95,1,-118); CF.Position=UDim2.new(0,0,0,63)
+    CF.Name="ContentFrame"; CF.Size=UDim2.new(1,-16,1,-140); CF.Position=UDim2.new(0,8,0,63)
     CF.BackgroundTransparency=1; CF.BorderSizePixel=0; CF.ScrollBarThickness=6; CF.ScrollBarImageColor3=C.blue
     CF.CanvasSize=UDim2.new(0,0,0,0); CF.AutomaticCanvasSize=Enum.AutomaticSize.Y
     CF.ScrollingDirection=Enum.ScrollingDirection.Y; CF.ScrollingEnabled=true; CF.Active=true
@@ -3717,7 +3819,7 @@ _GuiKeys = Keys
     CPad.PaddingTop=UDim.new(0,10); CPad.PaddingBottom=UDim.new(0,8); CPad.Parent=CF
 
     local BotSep=Instance.new("Frame")
-    BotSep.Position=UDim2.new(0,8,1,-54); BotSep.Size=UDim2.new(1,-16,0,1); BotSep.BackgroundColor3=C.blue
+    BotSep.Position=UDim2.new(0,8,1,-68); BotSep.Size=UDim2.new(1,-16,0,1); BotSep.BackgroundColor3=C.blue
     BotSep.BackgroundTransparency=0.65; BotSep.BorderSizePixel=0; BotSep.Parent=Inner; BotSep.ZIndex=2
 end)()
 
@@ -3935,18 +4037,18 @@ local CategoryRefs={contents={},btnsSide={},active="Speed"}
         local lay=Instance.new("UIListLayout"); lay.SortOrder=Enum.SortOrder.LayoutOrder; lay.Padding=UDim.new(0,6); lay.Parent=page
     end
     for i,name in ipairs(Categories) do
-        local btn=Instance.new("TextButton"); btn.Size=UDim2.new(1,0,0,32); btn.BackgroundColor3=C.blueDark
-        btn.BackgroundTransparency=0.3; btn.Text=name; btn.TextColor3=(name=="Speed") and C.white or C.textMuted
-        btn.TextSize=10; btn.Font=Enum.Font.GothamBold; btn.BorderSizePixel=0; btn.LayoutOrder=i; btn.Parent=GuiRefs.categoryList; guiCorner(btn,6)
-        local ind=Instance.new("Frame"); ind.Name="indicator"; ind.Size=UDim2.new(0,2,0,16); ind.Position=UDim2.new(1,-2,0.5,-8)
-        ind.BackgroundColor3=C.blue; ind.BackgroundTransparency=(name=="Speed") and 0.3 or 1; ind.BorderSizePixel=0; ind.Parent=btn
+        local btn=Instance.new("TextButton"); btn.Size=UDim2.new(0,58,0,36); btn.BackgroundColor3=C.blueDark
+        btn.BackgroundTransparency=0.15; btn.Text=name; btn.TextColor3=(name=="Speed") and C.white or C.textMuted
+        btn.TextSize=9; btn.Font=Enum.Font.GothamBold; btn.BorderSizePixel=0; btn.LayoutOrder=i; btn.Parent=GuiRefs.categoryList; guiCorner(btn,8)
+        local ind=Instance.new("Frame"); ind.Name="indicator"; ind.Size=UDim2.new(0.7,0,0,2); ind.Position=UDim2.new(0.15,0,1,-3)
+        ind.BackgroundColor3=C.blue; ind.BackgroundTransparency=(name=="Speed") and 0 or 1; ind.BorderSizePixel=0; ind.Parent=btn
         CategoryRefs.btnsSide[name]=btn
         btn.MouseButton1Click:Connect(function()
             for _,f in pairs(CategoryRefs.contents) do f.Visible=false end
             local selectedPage = CategoryRefs.contents[name]
             selectedPage.Visible=true; CategoryRefs.active=name
             for n,b in pairs(CategoryRefs.btnsSide) do
-                local ac=(n==name); b.TextColor3=ac and C.white or C.textMuted; b.BackgroundTransparency=ac and 0.2 or 0.3
+                local ac=(n==name); b.TextColor3=C.white; b.BackgroundColor3=ac and Color3.fromRGB(180,25,35) or C.blueDark; b.BackgroundTransparency=ac and 0.05 or 0.15
                 local i2=b:FindFirstChild("indicator"); if i2 then i2.BackgroundTransparency=ac and 0.3 or 1 end
             end
             local lay = selectedPage:FindFirstChildOfClass("UIListLayout")
@@ -3956,7 +4058,7 @@ local CategoryRefs={contents={},btnsSide={},active="Speed"}
         btn.MouseLeave:Connect(function() if CategoryRefs.active~=name then btn.TextColor3=C.textMuted; btn.BackgroundTransparency=0.3 end end)
     end
     local spBtn=CategoryRefs.btnsSide["Speed"]
-    if spBtn then spBtn.TextColor3=C.white; spBtn.BackgroundTransparency=0.2; local i2=spBtn:FindFirstChild("indicator"); if i2 then i2.BackgroundTransparency=0.3 end end
+    if spBtn then spBtn.TextColor3=C.white; spBtn.BackgroundColor3=Color3.fromRGB(180,25,35); spBtn.BackgroundTransparency=0.05; local i2=spBtn:FindFirstChild("indicator"); if i2 then i2.BackgroundTransparency=0.3 end end
 end)()
 
 -- SPEED PAGE
@@ -4006,6 +4108,14 @@ end)()
 ;(function()
     local cp=CategoryRefs.contents["Combat"]
     addSectLbl(cp,"BAT CONTROLS",0)
+    addToggleRow(cp,"Hard Hit (نطاق الضرب)",hardHitEnabled,0,nil,function(on)
+        if on then startHardHit() else stopHardHit() end
+        saveConfig()
+    end)
+    addInputRow(cp,"Hard Hit Radius",hardHitRadius,0,function(v)
+        local n=tonumber(v); if n and n>=3 and n<=40 then hardHitRadius=n end
+        saveConfig()
+    end)
     addInputRow(cp,"Aimbot Chase Speed",BAT_AIMBOT_SPEED,1,function(v)
         local n=tonumber(v)
         if n and n>=10 and n<=200 then BAT_AIMBOT_SPEED=n end
@@ -4105,7 +4215,7 @@ end)()
 -- STEAL PAGE (Rave Hub exact)
 ;(function()
     local st=CategoryRefs.contents["Steal"]
-    addSectLbl(st,"MMA STEAL OMGGGGGGGGG",0)
+    addSectLbl(st,"منو انت",0)
     addToggleRow(st,"Auto Steal",Steal.AutoStealEnabled,1,nil,function(on)
         if on then
             _G.MMA_WantedState.autoSteal = true
@@ -4835,8 +4945,8 @@ task.spawn(function()
     end
 end)
 
-print("MMA steal OMGGGGGGGGG what fackkkk")
-print("LEKAD BY FRNK33.")
+print("[منو انت] تم التحميل")
+print("[منو انت] جاهز")
 
 -- AUTO ANTI DROP FINAL SYNC
 pcall(syncAutoAntiDrop)
