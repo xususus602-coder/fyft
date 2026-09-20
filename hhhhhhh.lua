@@ -3658,7 +3658,7 @@ _GuiKeys = Keys
     pcall(function() GuiHub:SetAttribute("MMA_SCRIPT_UI", true) end)
 
     local Outer=Instance.new("Frame")
-    Outer.Name="Outer"; Outer.Size=UDim2.new(0,290,0,420); Outer.Position=UDim2.new(0.5,-145,0.5,-210)
+    Outer.Name="Outer"; Outer.Size=UDim2.new(0,250,0,360); Outer.Position=UDim2.new(0.5,-125,0.5,-180)
     Outer.BackgroundTransparency=1; Outer.BorderSizePixel=0; Outer.ClipsDescendants=false; Outer.Parent=GuiHub
     GuiRefs.outer=Outer
 
@@ -3751,7 +3751,7 @@ _GuiKeys = Keys
 
     local function showGui()
         -- always open settings in the center of the screen
-        Outer.Position=UDim2.new(0.5,-145,0.5,-210)
+        Outer.Position=UDim2.new(0.5,-125,0.5,-180)
         Outer.Visible=true; MiniBtn.Visible=false
     end
     local function hideGui() Outer.Visible=false; MiniBtn.Visible=true end
